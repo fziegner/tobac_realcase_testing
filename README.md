@@ -15,7 +15,7 @@ This is a tool for comparing reference files generated from Jupyter notebooks re
 
 ## Options:
 
-Example call: `python .\realcase_testing.py -nb v1.5.2 -v1 1.5.2 -v2 v1.5.1 -s ./realcase_testing`
+Example call: `python ./realcase_testing.py -nb v1.5.2 -v1 1.5.2 -v2 v1.5.1 -s ./realcase_testing`
 
 |    Argument    |Function                       |Possibilities                |
 |----------------|-------------------------------|-----------------------------|
