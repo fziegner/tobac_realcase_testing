@@ -1,0 +1,7 @@
+jupyter
+arm_pyart
+pytables
+ffmpeg
+gitpython
+nbformat
+nbconvert
