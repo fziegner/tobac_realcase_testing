@@ -96,6 +96,7 @@ def run_notebook(notebook_path, output):
 
 def create_reference_data(source_directory, save_directory_path, save_directory_name):
 
+    # TODO: Choosable notebooks
     reference_list = []
 
     for notebook in source_directory:
@@ -104,6 +105,7 @@ def create_reference_data(source_directory, save_directory_path, save_directory_
         os.makedirs(output_path)
         run_notebook(notebook, output_path)
         reference_list.extend(glob.glob(os.path.join(output_path, "Save", "*")))
+        break
 
     return reference_list
 
