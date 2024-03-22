@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import requests
+import platform
 
 import xarray as xr
 
@@ -15,6 +16,10 @@ parser.add_argument("-s", "--save", type=str)  # for choosing save location of e
 # TODO: Separate env folder
 args = parser.parse_args()
 
+kwargs = {}
+plt = platform.system()
+if plt == "Windows":
+    kwargs["shell"] = True
 
 def create_environment(environment_path, tobac_version):
 
@@ -22,7 +27,7 @@ def create_environment(environment_path, tobac_version):
         tobac_version = tobac_version[1::]
 
     normalized_prefix = environment_path.rstrip('/')
-    envs = subprocess.check_output(['mamba', 'env', 'list'], shell=True).decode('utf-8')
+    envs = subprocess.check_output(['mamba', 'env', 'list'], **kwargs).decode('utf-8')
     envs_info = envs.split('\n')
 
     for env_info in envs_info:
@@ -31,12 +36,12 @@ def create_environment(environment_path, tobac_version):
             if os.sep in parts[0]:
                 if normalized_prefix in parts[0]:
                     print(f"Conda environment at '{environment_path}' already exists.")
-                    subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", f"tobac={tobac_version}", "--file", "conda_requirements.txt"], shell=True, check=True)
+                    subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", f"tobac={tobac_version}", "--file", "conda_requirements.txt"], check=True, **kwargs)
                     return False
 
     print(f"Creating new environment at {environment_path}")
-    subprocess.run(["mamba", "create", "-y", "-p", environment_path, "python"], shell=True, check=True)
-    subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", f"tobac={tobac_version}", "--file", "conda_requirements.txt"], shell=True, check=True)
+    subprocess.run(["mamba", "create", "-y", "-p", environment_path, "python"], check=True, **kwargs)
+    subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", f"tobac={tobac_version}", "--file", "conda_requirements.txt"], check=True, **kwargs)
 
 
 def get_reference_file_paths(root_dir):
@@ -115,12 +120,12 @@ def main():
 
     tobac_version = check_version(args.version1)
     create_environment(environment_path, tobac_version)
-    subprocess.run(["mamba", "run", "-p", environment_path, "python", "create_references.py", "--nb", args.notebook, "--sv", save_directory, "--name", "source_reference_data"], shell=True, check=True)
+    subprocess.run(["mamba", "run", "-p", environment_path, "python", "create_references.py", "--nb", args.notebook, "--sv", save_directory, "--name", "source_reference_data"], check=True, **kwargs)
     source_paths = get_reference_file_paths(os.path.join(save_directory, "source_reference_data"))
 
     tobac_version = check_version(args.version2)
-    subprocess.run(["mamba", "install", "-y", "-c", "conda-forge", "-p", environment_path, f"tobac={tobac_version}"], shell=True, check=True)
-    subprocess.run(["mamba", "run", "-p", environment_path, "python", "create_references.py", "--nb", args.notebook, "--sv", save_directory, "--name", "target_reference_data"], shell=True, check=True)
+    subprocess.run(["mamba", "install", "-y", "-c", "conda-forge", "-p", environment_path, f"tobac={tobac_version}"], check=True, **kwargs)
+    subprocess.run(["mamba", "run", "-p", environment_path, "python", "create_references.py", "--nb", args.notebook, "--sv", save_directory, "--name", "target_reference_data"], check=True, **kwargs)
 
     for source_path in source_paths:
         target_path = source_path.replace("source_reference_data", "target_reference_data")
