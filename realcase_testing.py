@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 import requests
 import platform
+import re
+import git
 
 import xarray as xr
 
@@ -20,6 +22,22 @@ kwargs = {}
 plt = platform.system()
 if plt == "Windows":
     kwargs["shell"] = True
+
+pattern_version = r'^v?\d+\.\d+\.\d+$'
+pattern_commit = r'^[0-9a-fA-F]{40}$'
+
+
+def download_tobac(dest_directory, commit_hash):
+    repo_url = f'https://github.com/tobac-project/tobac.git'
+    repo_path = os.path.join(dest_directory, "tobac")
+    try:
+        repo = git.Repo.clone_from(repo_url, repo_path, no_checkout=True)
+        repo.git.checkout(commit_hash)
+    except git.exc.GitCommandError:
+        print(f"{repo_path} has to not exist.")
+
+    return repo_path
+
 
 def create_environment(environment_path, tobac_version):
 
@@ -41,7 +59,17 @@ def create_environment(environment_path, tobac_version):
 
     print(f"Creating new environment at {environment_path}")
     subprocess.run(["mamba", "create", "-y", "-p", environment_path, "python"], check=True, **kwargs)
-    subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", f"tobac={tobac_version}", "--file", "conda_requirements.txt"], check=True, **kwargs)
+    if re.match(pattern_version, tobac_version):
+        subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", f"tobac={tobac_version}", "--file", "conda_requirements.txt"], check=True, **kwargs)
+    elif bool(re.match(pattern_commit, tobac_version)):
+        print("Hash detected")
+        subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", "--file", "conda_requirements.txt"], check=True, **kwargs)
+        download_tobac(environment_path, tobac_version)
+        subprocess.run(["mamba", "install", "-y", "-p", environment_path, "-c", "conda-forge", "--file", os.path.join(environment_path, "tobac", "requirements.txt")], check=True, **kwargs)
+        subprocess.run(["pip", "install", "--no-deps", "--prefix", environment_path, os.path.join(environment_path, "tobac")], check=True, **kwargs)
+    else:
+        print("Tobac version not valid.")
+        exit()
 
 
 def get_reference_file_paths(root_dir):
@@ -99,12 +127,14 @@ def list_tags():
 def check_version(tobac_version):
 
     tags = list_tags()
+    if bool(re.match(pattern_commit, tobac_version)):
+        return tobac_version
     if not tobac_version.startswith("v"):
         tobac_version = "v" + tobac_version
     if tobac_version in tags:
         return tobac_version[1::]
     else:
-        print(f"Enter a valid tobac version tag {tags}")
+        print(f"Enter a valid hash or tobac version tag {tags}")
         exit()
 
 
