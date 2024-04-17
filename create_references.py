@@ -34,7 +34,11 @@ def get_head_notebooks(repo_path):
     repo = Repo(repo_path)
 
     head_tree = repo.head.commit.tree
-    notebook_paths = [blob.path for blob in head_tree.traverse() if blob.path.startswith("examples") and blob.path.endswith(".ipynb")]
+    notebook_paths = [
+        blob.path
+        for blob in head_tree.traverse()
+        if blob.path.startswith("examples") and blob.path.endswith(".ipynb")
+    ]
     print(notebook_paths)
     return notebook_paths
 
@@ -71,7 +75,9 @@ def get_notebook_files(arg_nb, save_directory_path, save_directory_name):
                 repo.git.checkout(target)
                 break
             except git.exc.GitCommandError:
-                target = input(f"Enter a valid version tag {list_tags(save_directory)} or commit hash: ")
+                target = input(
+                    f"Enter a valid version tag {list_tags(save_directory)} or commit hash: "
+                )
                 continue
         return get_notebooks_paths(save_directory, "examples")
 
@@ -100,8 +106,12 @@ def create_reference_data(source_directory, save_directory_path, save_directory_
     reference_list = []
 
     for notebook in source_directory:
-        notebook_name = os.path.basename(notebook).split(".")[0]  # get notebook name without extension
-        output_path = os.path.join(save_directory_path, save_directory_name, notebook_name)
+        notebook_name = os.path.basename(notebook).split(".")[
+            0
+        ]  # get notebook name without extension
+        output_path = os.path.join(
+            save_directory_path, save_directory_name, notebook_name
+        )
         os.makedirs(output_path)
         run_notebook(notebook, output_path)
         reference_list.extend(glob.glob(os.path.join(output_path, "Save", "*")))
