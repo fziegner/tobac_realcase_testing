@@ -5,3 +5,5 @@ ffmpeg
 gitpython
 nbformat
 nbconvert
+gitpython
+pip
