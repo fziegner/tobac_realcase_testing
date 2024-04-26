@@ -23,7 +23,11 @@ parser.add_argument(
 parser.add_argument(
     "-s", "--save", type=str
 )  # for choosing save location of envs and reference data; "tmp" or "PATH_TO_SAVE_FOLDER"
-# TODO: Separate env folder
+parser.add_argument(
+    "-na", "--names", default="All", type=str
+)  # for choosing specific notebooks to test; should be the names of the notebooks as they are called in the tobac
+   # examples folder in list form, e.g. ["Example_OLR_Tracking_model", "Example_Precip_Tracking"]
+
 args = parser.parse_args()
 
 kwargs = {}
@@ -276,6 +280,8 @@ def main():
             save_directory,
             "--name",
             "source_reference_data",
+            "--nb_names",
+            args.names,
         ],
         check=True,
         **kwargs,
@@ -300,6 +306,8 @@ def main():
             save_directory,
             "--name",
             "target_reference_data",
+            "--nb_names",
+            args.names,
         ],
         check=True,
         **kwargs,
