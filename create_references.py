@@ -1,6 +1,7 @@
 import argparse
 import glob
 import os
+import json
 
 import git.exc
 import nbformat
@@ -12,6 +13,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--nb", type=str)
 parser.add_argument("--sv", type=str)
 parser.add_argument("--name", type=str)
+parser.add_argument("--nb_names")
+
 args = parser.parse_args()
 
 
@@ -102,19 +105,23 @@ def run_notebook(notebook_path, output):
 
 def create_reference_data(source_directory, save_directory_path, save_directory_name):
 
-    # TODO: Choosable notebooks
     reference_list = []
+    trimmed_string = args.nb_names.strip('[]')
+    list_of_entries = [item.strip() for item in trimmed_string.split(',')]
 
+    if args.nb_names == "All":
+        list_of_entries = [os.path.basename(notebook).split(".")[0] for notebook in source_directory]
     for notebook in source_directory:
-        notebook_name = os.path.basename(notebook).split(".")[
-            0
-        ]  # get notebook name without extension
-        output_path = os.path.join(
-            save_directory_path, save_directory_name, notebook_name
-        )
-        os.makedirs(output_path)
-        run_notebook(notebook, output_path)
-        reference_list.extend(glob.glob(os.path.join(output_path, "Save", "*")))
+        if os.path.basename(notebook).split(".")[0] in list_of_entries:
+            notebook_name = os.path.basename(notebook).split(".")[
+                0
+            ]  # get notebook name without extension
+            output_path = os.path.join(
+                save_directory_path, save_directory_name, notebook_name
+            )
+            os.makedirs(output_path)
+            run_notebook(notebook, output_path)
+            reference_list.extend(glob.glob(os.path.join(output_path, "Save", "*")))
 
     return reference_list
 
