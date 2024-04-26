@@ -7,3 +7,4 @@ nbformat
 nbconvert
 gitpython
 pip
+botocore
