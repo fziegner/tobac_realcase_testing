@@ -37,7 +37,7 @@ pattern_commit = r"^[0-9a-fA-F]{40}$"
 
 def download_tobac(dest_directory, commit_hash):
     repo_url = f"https://github.com/tobac-project/tobac.git"
-    repo_path = os.path.join(dest_directory, "tobac")
+    repo_path = os.path.join(dest_directory, f"tobac_{commit_hash}")
     try:
         repo = git.Repo.clone_from(repo_url, repo_path, no_checkout=True)
         repo.git.checkout(commit_hash)
@@ -47,7 +47,7 @@ def download_tobac(dest_directory, commit_hash):
     return repo_path
 
 
-def create_environment(environment_path, tobac_version):
+def create_environment(environment_path, tobac_version, second_version=False):
 
     if tobac_version.startswith("v"):
         tobac_version = tobac_version[1::]
@@ -56,36 +56,37 @@ def create_environment(environment_path, tobac_version):
     envs = subprocess.check_output(["mamba", "env", "list"], **kwargs).decode("utf-8")
     envs_info = envs.split("\n")
 
-    for env_info in envs_info:
-        parts = env_info.split()
-        if len(parts) == 1:
-            if os.sep in parts[0]:
-                if normalized_prefix in parts[0]:
-                    print(f"Conda environment at '{environment_path}' already exists.")
-                    subprocess.run(
-                        [
-                            "mamba",
-                            "install",
-                            "-y",
-                            "-p",
-                            environment_path,
-                            "-c",
-                            "conda-forge",
-                            f"tobac={tobac_version}",
-                            "--file",
-                            "conda_requirements.txt",
-                        ],
-                        check=True,
-                        **kwargs,
-                    )
-                    return False
+    if not second_version:
+        for env_info in envs_info:
+            parts = env_info.split()
+            if len(parts) == 1:
+                if os.sep in parts[0]:
+                    if normalized_prefix in parts[0]:
+                        print(f"Conda environment at '{environment_path}' already exists.")
+                        subprocess.run(
+                            [
+                                "mamba",
+                                "install",
+                                "-y",
+                                "-p",
+                                environment_path,
+                                "-c",
+                                "conda-forge",
+                                f"tobac={tobac_version}",
+                                "--file",
+                                "conda_requirements.txt",
+                            ],
+                            check=True,
+                            **kwargs,
+                        )
+                        return False
 
-    print(f"Creating new environment at {environment_path}")
-    subprocess.run(
-        ["mamba", "create", "-y", "-p", environment_path, "python"],
-        check=True,
-        **kwargs,
-    )
+        print(f"Creating new environment at {environment_path}")
+        subprocess.run(
+            ["mamba", "create", "-y", "-p", environment_path, "python"],
+            check=True,
+            **kwargs,
+        )
     if re.match(pattern_version, tobac_version):
         subprocess.run(
             [
@@ -131,7 +132,7 @@ def create_environment(environment_path, tobac_version):
                 "-c",
                 "conda-forge",
                 "--file",
-                os.path.join(environment_path, "tobac", "requirements.txt"),
+                os.path.join(environment_path, f"tobac_{tobac_version}", "requirements.txt"),
             ],
             check=True,
             **kwargs,
@@ -143,7 +144,7 @@ def create_environment(environment_path, tobac_version):
                 "--no-deps",
                 "--prefix",
                 environment_path,
-                os.path.join(environment_path, "tobac"),
+                os.path.join(environment_path, f"tobac_{tobac_version}"),
             ],
             check=True,
             **kwargs,
@@ -160,7 +161,7 @@ def get_reference_file_paths(root_dir):
     for dir_path, dir_names, file_names in os.walk(root_dir):
         for dir_name in [d for d in dir_names if d.startswith("Example")]:
             example_folder_path = os.path.join(dir_path, dir_name)
-            file_paths.extend(glob.glob(os.path.join(example_folder_path, "Save", "*")))
+            file_paths.extend(glob.glob(os.path.join(str(example_folder_path), "Save", "*")))
     return file_paths
 
 
@@ -284,20 +285,7 @@ def main():
     )
 
     tobac_version = check_version(args.version2)
-    subprocess.run(
-        [
-            "mamba",
-            "install",
-            "-y",
-            "-c",
-            "conda-forge",
-            "-p",
-            environment_path,
-            f"tobac={tobac_version}",
-        ],
-        check=True,
-        **kwargs,
-    )
+    create_environment(environment_path, tobac_version, second_version=True)
     subprocess.run(
         [
             "mamba",
