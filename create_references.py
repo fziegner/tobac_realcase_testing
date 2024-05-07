@@ -27,7 +27,7 @@ def get_notebooks_paths(root_dir, notebooks_folder):
     notebook_paths = []
     for path, dirs, files in os.walk(notebooks_path):
         for file in files:
-            if file.endswith(".ipynb"):
+            if file.endswith(".ipynb") and "Basics" not in path:
                 notebook_paths.append(os.path.join(path, file))
     return notebook_paths
 

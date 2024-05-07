@@ -18,8 +18,14 @@ parser.add_argument(
     "-v1", "--version1", type=str
 )  # first comparison version; "X.Y.Z" or "vX.Y.Z"
 parser.add_argument(
+    "-v1u", "--version1url", default=None, type=str
+)  # first comparison version url
+parser.add_argument(
     "-v2", "--version2", type=str
 )  # second comparison version; "X.Y.Z" or "vX.Y.Z"
+parser.add_argument(
+    "-v2u", "--version2url", default=None, type=str
+)  # second comparison version url
 parser.add_argument(
     "-s", "--save", type=str
 )  # for choosing save location of envs and reference data; "tmp" or "PATH_TO_SAVE_FOLDER"
@@ -39,8 +45,11 @@ pattern_version = r"^v?\d+\.\d+\.\d+$"
 pattern_commit = r"^[0-9a-fA-F]{40}$"
 
 
-def download_tobac(dest_directory, commit_hash):
-    repo_url = f"https://github.com/tobac-project/tobac.git"
+def download_tobac(dest_directory, commit_hash, url):
+    if url:
+        repo_url = url
+    else:
+        repo_url = f"https://github.com/tobac-project/tobac.git"
     repo_path = os.path.join(dest_directory, f"tobac_{commit_hash}")
     try:
         repo = git.Repo.clone_from(repo_url, repo_path, no_checkout=True)
@@ -51,7 +60,7 @@ def download_tobac(dest_directory, commit_hash):
     return repo_path
 
 
-def create_environment(environment_path, tobac_version, second_version=False):
+def create_environment(environment_path, tobac_version, url, second_version=False):
 
     if tobac_version.startswith("v"):
         tobac_version = tobac_version[1::]
@@ -59,38 +68,24 @@ def create_environment(environment_path, tobac_version, second_version=False):
     normalized_prefix = environment_path.rstrip("/")
     envs = subprocess.check_output(["mamba", "env", "list"], **kwargs).decode("utf-8")
     envs_info = envs.split("\n")
+    download_tobac(environment_path, tobac_version, url)
 
     if not second_version:
+        exists = False
         for env_info in envs_info:
             parts = env_info.split()
             if len(parts) == 1:
                 if os.sep in parts[0]:
                     if normalized_prefix in parts[0]:
                         print(f"Conda environment at '{environment_path}' already exists.")
-                        subprocess.run(
-                            [
-                                "mamba",
-                                "install",
-                                "-y",
-                                "-p",
-                                environment_path,
-                                "-c",
-                                "conda-forge",
-                                f"tobac={tobac_version}",
-                                "--file",
-                                "conda_requirements.txt",
-                            ],
-                            check=True,
-                            **kwargs,
-                        )
-                        return False
-
-        print(f"Creating new environment at {environment_path}")
-        subprocess.run(
-            ["mamba", "create", "-y", "-p", environment_path, "python"],
-            check=True,
-            **kwargs,
-        )
+                        exists = True
+        if not exists:
+            print(f"Creating new environment at {environment_path}")
+            subprocess.run(
+                ["mamba", "create", "-y", "-p", environment_path, "python"],
+                check=True,
+                **kwargs,
+            )
     if re.match(pattern_version, tobac_version):
         subprocess.run(
             [
@@ -125,7 +120,6 @@ def create_environment(environment_path, tobac_version, second_version=False):
             check=True,
             **kwargs,
         )
-        download_tobac(environment_path, tobac_version)
         subprocess.run(
             [
                 "mamba",
@@ -265,7 +259,7 @@ def main():
     environment_path = os.path.join(save_directory, environment_name)
 
     tobac_version = check_version(args.version1)
-    create_environment(environment_path, tobac_version)
+    create_environment(environment_path, tobac_version, args.version1url)
     subprocess.run(
         [
             "mamba",
@@ -291,7 +285,7 @@ def main():
     )
 
     tobac_version = check_version(args.version2)
-    create_environment(environment_path, tobac_version, second_version=True)
+    create_environment(environment_path, tobac_version, args.version2url, second_version=True)
     subprocess.run(
         [
             "mamba",
