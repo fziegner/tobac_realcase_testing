@@ -119,7 +119,7 @@ def create_reference_data(source_directory, save_directory_path, save_directory_
             output_path = os.path.join(
                 save_directory_path, save_directory_name, notebook_name
             )
-            os.makedirs(output_path)
+            os.makedirs(output_path, exist_ok = True)
             run_notebook(notebook, output_path)
             reference_list.extend(glob.glob(os.path.join(output_path, "Save", "*")))
 
