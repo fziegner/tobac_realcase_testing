@@ -1,7 +1,6 @@
 import argparse
 import glob
 import os
-import json
 
 import git.exc
 import nbformat
@@ -10,83 +9,116 @@ from nbconvert.preprocessors import CellExecutionError
 from nbconvert.preprocessors import ExecutePreprocessor
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--nb", type=str)
-parser.add_argument("--sv", type=str)
-parser.add_argument("--name", type=str)
-parser.add_argument("--nb_names")
+parser.add_argument("--version", type=str)  # for choosing notebook version; "wd", "PATH_TO_NOTEBOOK_FOLDER" or GitHub tobac version or hash
+parser.add_argument("--save", type=str)  # for choosing save location of downloaded notebooks and output data; a path
+parser.add_argument("--url", type=str)  # URL from which to download tobac
+parser.add_argument("--names", default="All", type=str)  # Notebooks which should be executed; "All" or list delimited by comma
 
 args = parser.parse_args()
 
 
-# Configuration
-REPOSITORY_URL = f"https://github.com/tobac-project/tobac.git"
+def get_notebooks_paths(root_dir, notebooks_dir, exclude=None):
+    """Gets all Jupyter notebook paths in a given directory.
 
+    Parameters
+    ----------
+    root_dir : str
+        Path to the directory in which the notebooks directory is located.
+    notebooks_dir : str
+        Name of the directory containing the notebooks.
+    exclude : list, optional
+        List of strings which should be excluded from the notebook search.
 
-def get_notebooks_paths(root_dir, notebooks_folder):
-    notebooks_path = os.path.join(root_dir, notebooks_folder)
+    Returns
+    -------
+    notebook_paths : list
+        A list of paths to the notebooks.
+    """
+
+    notebooks_path = os.path.join(root_dir, notebooks_dir)
     notebook_paths = []
-    for path, dirs, files in os.walk(notebooks_path):
+    for path, _, files in os.walk(notebooks_path):
         for file in files:
-            if file.endswith(".ipynb") and "Basics" not in path:
+            if file.endswith(".ipynb"):
+                if exclude and any(exc in path for exc in exclude):
+                    continue
                 notebook_paths.append(os.path.join(path, file))
     return notebook_paths
 
 
-def get_head_notebooks(repo_path):
+def list_tags(repo_dir):
+    """Gets all version tags of a local Git repository.
 
-    repo = Repo(repo_path)
+    Parameters
+    ----------
+    repo_dir : str
+        Path to the repository directory.
 
-    head_tree = repo.head.commit.tree
-    notebook_paths = [
-        blob.path
-        for blob in head_tree.traverse()
-        if blob.path.startswith("examples") and blob.path.endswith(".ipynb")
-    ]
-    print(notebook_paths)
-    return notebook_paths
+    Returns
+    -------
+    repo_tags : list
+        A list of all version tags in the repository, sorted by commit date (newest first).
+    """
 
-
-def read_file_in_head(repo_path, file_path):
-
-    repo = Repo(repo_path)
-
-    file_blob = repo.head.commit.tree / file_path
-    file_content = file_blob.data_stream.read().decode("utf-8")
-
-    return file_content
+    repo = Repo(repo_dir)
+    tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime, reverse=True)
+    repo_tags = [tag.name for tag in tags]
+    return repo_tags
 
 
-def list_tags(repo_path):
-    repo = Repo(repo_path)
-    tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime)
-    return [tag.name for tag in tags]
+def get_notebook_files(method, environment_dir, notebook_dir, url="https://github.com/tobac-project/tobac"):
+    """Gets a list of strings pointing to the notebook files.
 
+    Parameters
+    ----------
+    method : str
+        For selecting the notebook files. Possible values include "wd" (working directory), a path to existing notebooks, Git version tags, and commit hashes.
+    environment_dir : str
+        Path to the directory in which the environment is generated.
+    notebook_dir : str
+        Name of the directory containing the notebooks.
+    url : str
+        GitHub URL from which the repository should be cloned. Default is the main tobac repository.
 
-def get_notebook_files(arg_nb, save_directory_path, save_directory_name):
+    Returns
+    -------
+    notebook_paths : list
+        A list of paths to the notebooks.
+    """
+    repo_dir = str(os.path.join(environment_dir, notebook_dir))
 
-    save_directory = os.path.join(save_directory_path, save_directory_name)
-
-    if arg_nb == "wd":
-        return get_notebooks_paths(os.getcwd(), "examples")
-    elif os.path.exists(os.path.join(save_directory, "examples")):
-        return get_notebooks_paths(save_directory, "examples")
-    else:  # for versions and hashes
-        repo = Repo.clone_from(REPOSITORY_URL, save_directory, no_checkout=True)
-        target = arg_nb
+    if method == "wd":
+        notebook_paths = get_notebooks_paths(os.getcwd(), "examples", ["Basics"])
+        return notebook_paths
+    elif os.path.exists(os.path.join(environment_dir, notebook_dir)):
+        print(f"Existing notebook directory found at {os.path.join(environment_dir, notebook_dir)}.")
+        return get_notebooks_paths(repo_dir, "examples", ["Basics"])
+    else:
+        repo = Repo.clone_from(url, repo_dir, no_checkout=True)
+        target = method
         while True:
             try:
                 repo.git.checkout(target)
                 break
             except git.exc.GitCommandError:
                 target = input(
-                    f"Enter a valid version tag {list_tags(save_directory)} or commit hash: "
+                    f"Enter a valid version tag {list_tags(repo_dir)} or commit hash: "
                 )
                 continue
-        return get_notebooks_paths(save_directory, "examples")
+        notebook_paths = get_notebooks_paths(repo_dir, "examples", ["Basics"])
+        return notebook_paths
 
 
-def run_notebook(notebook_path, output):
+def run_notebook(notebook_path, output_path):
+    """Executes a Jupyter notebook given its file path.
 
+    Parameters
+    ----------
+    notebook_path : str
+        The file path of the Jupyter notebook to execute.
+    output_path : str
+        The output directory where the output of the notebook will be saved.
+    """
     with open(notebook_path, "r", encoding="utf-8") as f:
         nb = nbformat.read(f, as_version=4)
 
@@ -94,7 +126,7 @@ def run_notebook(notebook_path, output):
 
     try:
         print(f"Running notebook {notebook_path}")
-        ep.preprocess(nb, {"metadata": {"path": output}})
+        ep.preprocess(nb, {"metadata": {"path": output_path}})
         print(f"Notebook {notebook_path} executed successfully!")
     except CellExecutionError as e:
         msg = f"Error executing the notebook {notebook_path}.\n"
@@ -103,23 +135,33 @@ def run_notebook(notebook_path, output):
         raise
 
 
-def create_reference_data(source_directory, save_directory_path, save_directory_name):
+def create_reference_data(notebooks_paths, save_dir_path, notebook_names):
+    """Creates reference data for given Jupyter notebooks.
 
+    Parameters
+    ----------
+    notebooks_paths : list
+        A list containing string paths pointing to individual notebooks.
+    save_dir_path : str
+        Path to the directory in which output of the notebooks should be saved.
+    notebook_names : str | list
+        For selecting which notebooks should be executed. Either "All" if all notebooks should be processed, or a list of notebook filenames.
+
+    Returns
+    -------
+    reference_list : list
+        A list containing string paths pointing to the output of all processed notebooks.
+    """
     reference_list = []
-    trimmed_string = args.nb_names.strip('[]')
-    list_of_entries = [item.strip() for item in trimmed_string.split(',')]
+    list_of_entries = [item for item in args.names.split(',')]
 
-    if args.nb_names == "All":
-        list_of_entries = [os.path.basename(notebook).split(".")[0] for notebook in source_directory]
-    for notebook in source_directory:
+    if notebook_names == "All":
+        list_of_entries = [os.path.basename(notebook).split(".")[0] for notebook in notebooks_paths]
+    for notebook in notebooks_paths:
         if os.path.basename(notebook).split(".")[0] in list_of_entries:
-            notebook_name = os.path.basename(notebook).split(".")[
-                0
-            ]  # get notebook name without extension
-            output_path = os.path.join(
-                save_directory_path, save_directory_name, notebook_name
-            )
-            os.makedirs(output_path, exist_ok = True)
+            notebook_name = os.path.basename(notebook).split(".")[0]
+            output_path = os.path.join(save_dir_path, notebook_name)
+            os.makedirs(output_path, exist_ok=True)
             run_notebook(notebook, output_path)
             reference_list.extend(glob.glob(os.path.join(output_path, "Save", "*")))
 
@@ -128,8 +170,8 @@ def create_reference_data(source_directory, save_directory_path, save_directory_
 
 def main():
 
-    source_notebooks = get_notebook_files(args.nb, args.sv, "notebooks")
-    create_reference_data(source_notebooks, args.sv, args.name)
+    notebooks_paths = get_notebook_files(args.version, args.save, "../notebooks", args.url)
+    create_reference_data(notebooks_paths, args.save, args.names)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import requests
 import platform
 import re
 import git
+import utils
 
 import xarray as xr
 
@@ -28,11 +29,11 @@ parser.add_argument(
 )  # second comparison version url
 parser.add_argument(
     "-s", "--save", type=str
-)  # for choosing save location of envs and reference data; "tmp" or "PATH_TO_SAVE_FOLDER"
+)  # For choosing save location of the generated environment and notebook outputs; "tmp" or "PATH_TO_SAVE_FOLDER"
 parser.add_argument(
     "-na", "--names", default="All", type=str
 )  # for choosing specific notebooks to test; should be the names of the notebooks as they are called in the tobac
-   # examples folder in list form, e.g. ["Example_OLR_Tracking_model", "Example_Precip_Tracking"]
+   # examples folder delimited by a comma, e.g. Example_OLR_Tracking_model,Example_Precip_Tracking
 
 args = parser.parse_args()
 
@@ -45,22 +46,20 @@ pattern_version = r"^v?\d+\.\d+\.\d+$"
 pattern_commit = r"^[0-9a-fA-F]{40}$"
 
 
-def download_tobac(dest_directory, commit_hash, url):
-    if url:
-        repo_url = url
-    else:
-        repo_url = f"https://github.com/tobac-project/tobac.git"
-    repo_path = os.path.join(dest_directory, f"tobac_{commit_hash}")
-    try:
-        repo = git.Repo.clone_from(repo_url, repo_path, no_checkout=True)
-        repo.git.checkout(commit_hash)
-    except git.exc.GitCommandError:
-        print(f"{repo_path} has to not exist.")
+def create_environment(environment_path, tobac_version, url, existing_env):
+    """Creates a mamba environment.
 
-    return repo_path
-
-
-def create_environment(environment_path, tobac_version, url, second_version=False):
+    Parameters
+    ----------
+    environment_path : str
+        The path where the environment will be created.
+    tobac_version : str
+        The version of Tobac to be installed in the environment.
+    url : str
+        The URL from which Tobac will be downloaded.
+    existing_env : bool
+        Flag indicating whether it is the second version of Tobac. Default is False.
+    """
 
     if tobac_version.startswith("v"):
         tobac_version = tobac_version[1::]
@@ -68,9 +67,9 @@ def create_environment(environment_path, tobac_version, url, second_version=Fals
     normalized_prefix = environment_path.rstrip("/")
     envs = subprocess.check_output(["mamba", "env", "list"], **kwargs).decode("utf-8")
     envs_info = envs.split("\n")
-    download_tobac(environment_path, tobac_version, url)
+    utils.download_tobac(environment_path, tobac_version, url)
 
-    if not second_version:
+    if not existing_env:
         exists = False
         for env_info in envs_info:
             parts = env_info.split()
@@ -116,19 +115,6 @@ def create_environment(environment_path, tobac_version, url, second_version=Fals
                 "conda-forge",
                 "--file",
                 "conda_requirements.txt",
-            ],
-            check=True,
-            **kwargs,
-        )
-        subprocess.run(
-            [
-                "mamba",
-                "install",
-                "-y",
-                "-p",
-                environment_path,
-                "-c",
-                "conda-forge",
                 "--file",
                 os.path.join(environment_path, f"tobac_{tobac_version}", "requirements.txt"),
             ],
@@ -152,20 +138,90 @@ def create_environment(environment_path, tobac_version, url, second_version=Fals
         exit()
 
 
-def get_reference_file_paths(root_dir):
+def check_version(tobac_version):
+    """
+    This function checks the version of 'tobac'. The version can be specified in two formats: a git commit hash or a version tag.
 
-    file_paths = []
+    Parameters
+    ----------
+    tobac_version: str
+        The version of tobac. Can be a git commit hash or a version tag.
 
-    for dir_path, dir_names, file_names in os.walk(root_dir):
-        for dir_name in [d for d in dir_names if d.startswith("Example")]:
-            example_folder_path = os.path.join(dir_path, dir_name)
-            file_paths.extend(glob.glob(os.path.join(str(example_folder_path), "Save", "*")))
-    return file_paths
+    Returns
+    -------
+    tobac_version: str
+        The tobac version without the preceding "v" if it is a valid version tag. If the 'tobac_version' is a git commit
+        hash, it returns it as it is. If an invalid version is given, a list of possible versions is returned.
+    """
+
+    tags = utils.list_tags()
+    if bool(re.match(pattern_commit, tobac_version)):
+        return tobac_version
+    if not tobac_version.startswith("v"):
+        tobac_version = "v" + tobac_version
+    if tobac_version in tags:
+        return tobac_version[1::]
+    else:
+        print(f"Enter a valid hash or tobac version tag {tags}")
+        exit()
+
+
+def process_version(tobac_version, version_url, environment_path, save_dir, existing_env=False):
+    """Runs all notebooks found in the Repository of a given Tobac version. Version provided by either a git commit hash
+    or a version tag.
+
+    Parameters
+    ----------
+    tobac_version : str
+        The tobac version to install, either a git commit hash or a version tag.
+    version_url : str
+        The URL for the version from which the notebooks are downloaded.
+    environment_path : str
+        The path to the environment.
+    save_dir : str
+        The directory in which downloaded notebooks and their output will be saved.
+    existing_env : bool
+        Flag indicating whether it is the second version of Tobac. This flag exists so that the previously created
+        environment can be reused. Default is False.
+    """
+    if version_url is None:
+        version_url = "https://github.com/tobac-project/tobac"
+    tobac_version = check_version(tobac_version)
+    create_environment(environment_path, tobac_version, version_url, existing_env)
+    subprocess.run(
+        [
+            "mamba",
+            "run",
+            "-p",
+            environment_path,
+            "python",
+            "create_references.py",
+            "--version",
+            args.notebook,
+            "--save",
+            save_dir,
+            "--url",
+            version_url,
+            "--names",
+            args.names,
+        ],
+        check=True,
+        **kwargs,
+    )
 
 
 def compare_files_detailed(reference_file1, reference_file2):
+    """Compares two datasets and checks whether they are equal by comparing global attributes and variables.
+    Reports mismatches if found. Results are written to a file.
 
-    # TODO: Clear file
+    Parameters
+    ----------
+    reference_file1 : str
+        The path to the first reference file.
+    reference_file2 : str
+        The path to the second reference file.
+    """
+
     with open("comparison_results.txt", "a") as f:
         with xr.open_dataset(reference_file1) as ds_source, xr.open_dataset(
             reference_file2
@@ -224,30 +280,6 @@ def compare_files_detailed(reference_file1, reference_file2):
                             f.write(f"Data of variable '{variable}' differs.\n")
 
 
-def list_tags():
-
-    tags_url = f"https://api.github.com/repos/tobac-project/tobac/tags"
-    tags_response = requests.get(tags_url)
-    tags = tags_response.json()
-    tag_names = [tag["name"] for tag in tags]
-
-    return tag_names
-
-
-def check_version(tobac_version):
-
-    tags = list_tags()
-    if bool(re.match(pattern_commit, tobac_version)):
-        return tobac_version
-    if not tobac_version.startswith("v"):
-        tobac_version = "v" + tobac_version
-    if tobac_version in tags:
-        return tobac_version[1::]
-    else:
-        print(f"Enter a valid hash or tobac version tag {tags}")
-        exit()
-
-
 def main():
 
     if args.save == "tmp":
@@ -258,55 +290,12 @@ def main():
     environment_name = "realcase_testing"
     environment_path = os.path.join(save_directory, environment_name)
 
-    tobac_version = check_version(args.version1)
-    create_environment(environment_path, tobac_version, args.version1url)
-    subprocess.run(
-        [
-            "mamba",
-            "run",
-            "-p",
-            environment_path,
-            "python",
-            "create_references.py",
-            "--nb",
-            args.notebook,
-            "--sv",
-            save_directory,
-            "--name",
-            "source_reference_data",
-            "--nb_names",
-            args.names,
-        ],
-        check=True,
-        **kwargs,
-    )
-    source_paths = get_reference_file_paths(
+    process_version(args.version1, args.version1url, environment_path, os.path.join(save_directory, "source_reference_data"))
+    source_paths = utils.get_reference_file_paths(
         os.path.join(save_directory, "source_reference_data")
     )
 
-    tobac_version = check_version(args.version2)
-    create_environment(environment_path, tobac_version, args.version2url, second_version=True)
-    subprocess.run(
-        [
-            "mamba",
-            "run",
-            "-p",
-            environment_path,
-            "python",
-            "create_references.py",
-            "--nb",
-            args.notebook,
-            "--sv",
-            save_directory,
-            "--name",
-            "target_reference_data",
-            "--nb_names",
-            args.names,
-        ],
-        check=True,
-        **kwargs,
-    )
-
+    process_version(args.version2, args.version2url, environment_path, os.path.join(save_directory, "target_reference_data"), True)
     for source_path in source_paths:
         target_path = source_path.replace(
             "source_reference_data", "target_reference_data"
