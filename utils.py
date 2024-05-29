@@ -38,9 +38,15 @@ def download_tobac(destination_dir, commit_hash, url=None):
 def get_reference_file_paths(root_dir):
     """Gets the paths of all generated reference files.
 
-    :param root_dir: The root directory from which to search for reference file paths.
-    :return: A list of reference file paths.
+    Parameters
+    ----------
+    root_dir : str
+        The root directory from which to search for reference file paths.
 
+    Returns
+    -------
+    file_paths : str
+        A list of reference file paths.
     """
     file_paths = []
 
@@ -52,11 +58,12 @@ def get_reference_file_paths(root_dir):
 
 
 def list_tags():
-    """
-    Retrieves the list of tags from the tobac-project repository.
+    """Retrieves the list of tags from the tobac-project repository.
 
-    :return: A list of tag names.
-    :rtype: List[str]
+    Returns
+    -------
+    tag_names : list
+        A list of tag strings.
     """
     tags_url = f"https://api.github.com/repos/tobac-project/tobac/tags"
     tags_response = requests.get(tags_url)
