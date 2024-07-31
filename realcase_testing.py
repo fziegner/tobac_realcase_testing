@@ -123,7 +123,7 @@ def create_environment(environment_path, tobac_version, url, existing_env):
         )
         subprocess.run(
             [
-                "pip",
+                str(os.path.join(os.getcwd(), environment_path, "Scripts", "pip")),
                 "install",
                 "--no-deps",
                 "--prefix",
