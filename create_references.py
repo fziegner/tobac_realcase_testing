@@ -36,14 +36,12 @@ def get_notebooks_paths(root_dir, notebooks_dir, exclude=None):
     """
 
     notebooks_path = os.path.join(root_dir, notebooks_dir)
-    notebook_paths = []
-    for path, _, files in os.walk(notebooks_path):
-        for file in files:
-            if file.endswith(".ipynb"):
-                if exclude and any(exc in path for exc in exclude):
-                    continue
-                notebook_paths.append(os.path.join(path, file))
-    return notebook_paths
+    return [
+        os.path.join(path, file)
+        for path, _, files in os.walk(notebooks_path)
+        for file in files if file.endswith(".ipynb")
+        and not (exclude and any(exc in path for exc in exclude))
+    ]
 
 
 def list_tags(repo_dir):
@@ -60,10 +58,8 @@ def list_tags(repo_dir):
         A list of all version tags in the repository, sorted by commit date (newest first).
     """
 
-    repo = Repo(repo_dir)
-    tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime, reverse=True)
-    repo_tags = [tag.name for tag in tags]
-    return repo_tags
+    tags = Repo(repo_dir).tags
+    return sorted((tag.name for tag in tags), key=lambda t: t.commit.committed_datetime, reverse=True)
 
 
 def get_notebook_files(method, environment_dir, notebook_dir, url="https://github.com/tobac-project/tobac"):
@@ -85,28 +81,26 @@ def get_notebook_files(method, environment_dir, notebook_dir, url="https://githu
     notebook_paths : list
         A list of paths to the notebooks.
     """
-    repo_dir = str(os.path.join(environment_dir, notebook_dir))
+    repo_dir = os.path.join(environment_dir, notebook_dir)
+    print(repo_dir)
 
     if method == "wd":
-        notebook_paths = get_notebooks_paths(os.getcwd(), "examples", ["Basics"])
-        return notebook_paths
-    elif os.path.exists(os.path.join(environment_dir, notebook_dir)):
-        print(f"Existing notebook directory found at {os.path.join(environment_dir, notebook_dir)}.")
-        return get_notebooks_paths(repo_dir, "examples", ["Basics"])
-    else:
-        repo = Repo.clone_from(url, repo_dir, no_checkout=True)
-        target = method
-        while True:
-            try:
-                repo.git.checkout(target)
-                break
-            except git.exc.GitCommandError:
-                target = input(
-                    f"Enter a valid version tag {list_tags(repo_dir)} or commit hash: "
-                )
-                continue
-        notebook_paths = get_notebooks_paths(repo_dir, "examples", ["Basics"])
-        return notebook_paths
+        return get_notebooks_paths(os.getcwd(), "examples", ["Basics", "Track_on_Radar_Segment_on_Satellite"])
+    elif os.path.exists(repo_dir):
+        print(f"Existing notebook directory found at {repo_dir}.")
+        return get_notebooks_paths(repo_dir, "examples", ["Basics", "Track_on_Radar_Segment_on_Satellite"])
+
+    repo = Repo.clone_from(url, repo_dir, no_checkout=True)
+    target = method
+
+    while True:
+        try:
+            repo.git.checkout(target)
+            break
+        except git.exc.GitCommandError:
+            target = input(f"Enter a valid version tag {list_tags(repo_dir)} or commit hash: ")
+
+    return get_notebooks_paths(repo_dir, "examples", ["Basics", "Track_on_Radar_Segment_on_Satellite"])
 
 
 def run_notebook(notebook_path, output_path):
@@ -129,9 +123,7 @@ def run_notebook(notebook_path, output_path):
         ep.preprocess(nb, {"metadata": {"path": output_path}})
         print(f"Notebook {notebook_path} executed successfully!")
     except CellExecutionError as e:
-        msg = f"Error executing the notebook {notebook_path}.\n"
-        msg += f"See the following error: {e}\n"
-        print(msg)
+        print(f"Error executing the notebook {notebook_path}.\nSee the following error: {e}\n")
         raise
 
 
@@ -158,8 +150,8 @@ def create_reference_data(notebooks_paths, save_dir_path, notebook_names):
     if notebook_names == "All":
         list_of_entries = [os.path.basename(notebook).split(".")[0] for notebook in notebooks_paths]
     for notebook in notebooks_paths:
-        if os.path.basename(notebook).split(".")[0] in list_of_entries:
-            notebook_name = os.path.basename(notebook).split(".")[0]
+        notebook_name = os.path.basename(notebook).split(".")[0]
+        if notebook_name in list_of_entries:
             output_path = os.path.join(save_dir_path, notebook_name)
             os.makedirs(output_path, exist_ok=True)
             run_notebook(notebook, output_path)
@@ -170,7 +162,7 @@ def create_reference_data(notebooks_paths, save_dir_path, notebook_names):
 
 def main():
 
-    notebooks_paths = get_notebook_files(args.version, args.save, "../notebooks", args.url)
+    notebooks_paths = get_notebook_files(args.version, args.save, "./notebooks", args.url)
     create_reference_data(notebooks_paths, args.save, args.names)
 
 

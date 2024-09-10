@@ -4,7 +4,7 @@ import git
 import requests
 
 
-def download_tobac(destination_dir, commit_hash, url=None):
+def download_tobac(destination_dir, commit_hash, url="https://github.com/tobac-project/tobac.git"):
     """Downloads a tobac version using commit hash from a specified URL.
 
     Parameters
@@ -21,16 +21,13 @@ def download_tobac(destination_dir, commit_hash, url=None):
     repo_path : str
         The path to the downloaded repository.
     """
-    if url:
-        repo_url = url
-    else:
-        repo_url = f"https://github.com/tobac-project/tobac.git"
     repo_path = os.path.join(destination_dir, f"tobac_{commit_hash}")
     try:
-        repo = git.Repo.clone_from(repo_url, repo_path, no_checkout=True)
+        repo = git.Repo.clone_from(url, repo_path, no_checkout=True)
         repo.git.checkout(commit_hash)
-    except git.exc.GitCommandError:
-        print(f"{repo_path} has to not exist.")
+    except git.exc.GitCommandError as e:
+        print(f"Error downloading repository: {e}. Ensure '{repo_path}' does not exist.")
+        return None
 
     return repo_path
 
@@ -66,8 +63,11 @@ def list_tags():
         A list of tag strings.
     """
     tags_url = f"https://api.github.com/repos/tobac-project/tobac/tags"
-    tags_response = requests.get(tags_url)
-    tags = tags_response.json()
-    tag_names = [tag["name"] for tag in tags]
-
-    return tag_names
+    try:
+        tags_response = requests.get(tags_url)
+        tags_response.raise_for_status()
+        tags = tags_response.json()
+        return [tag["name"] for tag in tags]
+    except requests.RequestException as e:
+        print(f"Failed to retrieve tags: {e}")
+        return []

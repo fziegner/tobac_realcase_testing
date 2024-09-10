@@ -12,35 +12,18 @@ import utils
 import xarray as xr
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-nb", "--notebook", type=str
-)  # for choosing notebook version; "local", "PATH_TO_NOTEBOOK_FOLDER" or GitHub tobac version or hash
-parser.add_argument(
-    "-v1", "--version1", type=str
-)  # first comparison version; "X.Y.Z" or "vX.Y.Z"
-parser.add_argument(
-    "-v1u", "--version1url", default=None, type=str
-)  # first comparison version url
-parser.add_argument(
-    "-v2", "--version2", type=str
-)  # second comparison version; "X.Y.Z" or "vX.Y.Z"
-parser.add_argument(
-    "-v2u", "--version2url", default=None, type=str
-)  # second comparison version url
-parser.add_argument(
-    "-s", "--save", type=str
-)  # For choosing save location of the generated environment and notebook outputs; "tmp" or "PATH_TO_SAVE_FOLDER"
-parser.add_argument(
-    "-na", "--names", default="All", type=str
-)  # for choosing specific notebooks to test; should be the names of the notebooks as they are called in the tobac
-   # examples folder delimited by a comma, e.g. Example_OLR_Tracking_model,Example_Precip_Tracking
+parser.add_argument("-nb", "--notebook", type=str)  # for choosing notebook version; "local", "PATH_TO_NOTEBOOK_FOLDER" or GitHub tobac version or hash
+parser.add_argument("-v1", "--version1", type=str)  # first comparison version; "X.Y.Z" or "vX.Y.Z"
+parser.add_argument("-v1u", "--version1url", default=None, type=str)  # first comparison version url
+parser.add_argument("-v2", "--version2", type=str)  # second comparison version; "X.Y.Z" or "vX.Y.Z"
+parser.add_argument("-v2u", "--version2url", default=None, type=str)  # second comparison version url
+parser.add_argument("-s", "--save", type=str)  # For choosing save location of the generated environment and notebook outputs; "tmp" or "PATH_TO_SAVE_FOLDER"
+parser.add_argument("-na", "--names", default="All", type=str)  # for choosing specific notebooks to test; should be the names of the notebooks as they are called in the tobac examples folder delimited by a comma, e.g. Example_OLR_Tracking_model,Example_Precip_Tracking
 
 args = parser.parse_args()
 
-kwargs = {}
 plt = platform.system()
-if plt == "Windows":
-    kwargs["shell"] = True
+kwargs = {"shell": True} if plt == "Windows" else {}
 
 pattern_version = r"^v?\d+\.\d+\.\d+$"
 pattern_commit = r"^[0-9a-fA-F]{40}$"
@@ -117,6 +100,8 @@ def create_environment(environment_path, tobac_version, url, existing_env):
                 "conda_requirements.txt",
                 "--file",
                 os.path.join(environment_path, f"tobac_{tobac_version}", "requirements.txt"),
+                "--file",
+                os.path.join(environment_path, f"tobac_{tobac_version}", "example_requirements.txt"),
             ],
             check=True,
             **kwargs,
@@ -169,15 +154,14 @@ def check_version(tobac_version):
     """
 
     tags = utils.list_tags()
-    if bool(re.match(pattern_commit, tobac_version)):
+    if re.match(pattern_commit, tobac_version):
         return tobac_version
     if not tobac_version.startswith("v"):
         tobac_version = "v" + tobac_version
     if tobac_version in tags:
-        return tobac_version[1::]
-    else:
-        print(f"Enter a valid hash or tobac version tag {tags}")
-        exit()
+        return tobac_version[1:]
+    print(f"Invalid version or hash. Valid versions: {tags}")
+    exit()
 
 
 def process_version(tobac_version, version_url, environment_path, save_dir, existing_env=False):
@@ -198,122 +182,65 @@ def process_version(tobac_version, version_url, environment_path, save_dir, exis
         Flag indicating whether it is the second version of Tobac. This flag exists so that the previously created
         environment can be reused. Default is False.
     """
-    if version_url is None:
-        version_url = "https://github.com/tobac-project/tobac"
+    version_url = version_url or "https://github.com/tobac-project/tobac"
     tobac_version = check_version(tobac_version)
     create_environment(environment_path, tobac_version, version_url, existing_env)
+
     subprocess.run(
-        [
-            "mamba",
-            "run",
-            "-p",
-            environment_path,
-            "python",
-            "create_references.py",
-            "--version",
-            args.notebook,
-            "--save",
-            save_dir,
-            "--url",
-            version_url,
-            "--names",
-            args.names,
-        ],
-        check=True,
-        **kwargs,
+        ["mamba", "run", "-p", environment_path, "python", "create_references.py", "--version", args.notebook, "--save", save_dir, "--url", version_url, "--names", args.names],
+        check=True, **kwargs,
     )
 
 
 def compare_files_detailed(reference_file1, reference_file2):
-    """Compares two datasets and checks whether they are equal by comparing global attributes and variables.
-    Reports mismatches if found. Results are written to a file.
-
-    Parameters
-    ----------
-    reference_file1 : str
-        The path to the first reference file.
-    reference_file2 : str
-        The path to the second reference file.
-    """
-
+    """Compares two datasets and checks whether they are equal."""
     with open("comparison_results.txt", "a") as f:
-        with xr.open_dataset(reference_file1) as ds_source, xr.open_dataset(
-            reference_file2
-        ) as ds_target:
+        with xr.open_dataset(reference_file1) as ds_source, xr.open_dataset(reference_file2) as ds_target:
             if ds_source.equals(ds_target):
-                print(
-                    f"Comparison result for {reference_file1} and {reference_file2}: Same"
-                )
-                f.write(
-                    f"Comparison result for {reference_file1} and {reference_file2}: Same\n"
-                )
+                result = f"Comparison result for {reference_file1} and {reference_file2}: Same\n"
+                print(result.strip())
+                f.write(result)
             else:
-                print(
-                    f"Comparison result for {reference_file1} and {reference_file2}: Different"
-                )
-                f.write(
-                    f"Comparison result for {reference_file1} and {reference_file2}: Different\n"
-                )
-                for attribute in set(ds_source.attrs).union(ds_target.attrs):
-                    if (
-                        attribute not in ds_source.attrs
-                        or attribute not in ds_target.attrs
-                        or ds_source.attrs[attribute] != ds_target.attrs[attribute]
-                    ):
-                        print(f"Global attribute '{attribute}' differs.")
-                        f.write(f"Global attribute '{attribute}' differs.\n")
+                result = f"Comparison result for {reference_file1} and {reference_file2}: Different\n"
+                print(result.strip())
+                f.write(result)
+                diff_report(ds_source, ds_target, f)
 
-                for variable in set(ds_source.variables).union(ds_target.variables):
-                    if (
-                        variable not in ds_source.variables
-                        or variable not in ds_target.variables
-                    ):
-                        print(f"Variable '{variable}' is not present in both files.")
-                        f.write(
-                            f"Variable '{variable}' is not present in both files.\n"
-                        )
-                    else:
-                        for attribute in set(ds_source[variable].attrs).union(
-                            ds_target[variable].attrs
-                        ):
-                            if (
-                                attribute not in ds_source[variable].attrs
-                                or attribute not in ds_target[variable].attrs
-                                or ds_source[variable].attrs[attribute]
-                                != ds_target[variable].attrs[attribute]
-                            ):
-                                print(
-                                    f"Attribute '{attribute}' of variable '{variable}' differs."
-                                )
-                                f.write(
-                                    f"Attribute '{attribute}' of variable '{variable}' differs.\n"
-                                )
 
-                        if not ds_source[variable].equals(ds_target[variable]):
-                            print(f"Data of variable '{variable}' differs.")
-                            f.write(f"Data of variable '{variable}' differs.\n")
+def diff_report(ds_source, ds_target, output_file):
+    """Reports differences between two datasets."""
+    for attr in set(ds_source.attrs).union(ds_target.attrs):
+        if ds_source.attrs.get(attr) != ds_target.attrs.get(attr):
+            output_file.write(f"Global attribute '{attr}' differs.\n")
+
+    for var in set(ds_source.variables).union(ds_target.variables):
+        if var not in ds_source or var not in ds_target:
+            output_file.write(f"Variable '{var}' is not present in both files.\n")
+        else:
+            compare_variable(ds_source, ds_target, var, output_file)
+
+
+def compare_variable(ds_source, ds_target, var, output_file):
+    """Compares a variable in two datasets and writes differences."""
+    for attr in set(ds_source[var].attrs).union(ds_target[var].attrs):
+        if ds_source[var].attrs.get(attr) != ds_target[var].attrs.get(attr):
+            output_file.write(f"Attribute '{attr}' of variable '{var}' differs.\n")
+
+    if not ds_source[var].equals(ds_target[var]):
+        output_file.write(f"Data of variable '{var}' differs.\n")
 
 
 def main():
 
-    if args.save == "tmp":
-        save_directory = tempfile.TemporaryDirectory()
-    else:
-        save_directory = args.save
-
-    environment_name = "realcase_testing"
-    environment_path = os.path.join(save_directory, environment_name)
+    save_directory = tempfile.TemporaryDirectory() if args.save == "tmp" else args.save
+    environment_path = os.path.join(save_directory, "realcase_testing")
 
     process_version(args.version1, args.version1url, environment_path, os.path.join(save_directory, "source_reference_data"))
-    source_paths = utils.get_reference_file_paths(
-        os.path.join(save_directory, "source_reference_data")
-    )
+    source_paths = utils.get_reference_file_paths(os.path.join(save_directory, "source_reference_data"))
 
     process_version(args.version2, args.version2url, environment_path, os.path.join(save_directory, "target_reference_data"), True)
     for source_path in source_paths:
-        target_path = source_path.replace(
-            "source_reference_data", "target_reference_data"
-        )
+        target_path = source_path.replace("source_reference_data", "target_reference_data")
         if os.path.exists(target_path):
             compare_files_detailed(source_path, target_path)
 
@@ -321,6 +248,5 @@ def main():
         save_directory.cleanup()
 
 
-#  python .\realcase_testing.py -nb v1.5.2 -v1 v1.5.2 -v2 v1.5.1 -s ./testing
 if __name__ == "__main__":
     main()
